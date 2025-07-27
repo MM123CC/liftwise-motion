@@ -285,6 +285,6 @@
   }
   
   .bottom-nav {
-    @apply pb-safe-area-inset-bottom;
+    @apply pb-4;
   }
 }
