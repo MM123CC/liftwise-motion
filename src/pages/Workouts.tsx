@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { 
   Dumbbell, 
@@ -88,7 +89,13 @@ const muscleGroups = [
   }
 ];
 
-type WorkoutState = 'selection' | 'exerciseList' | 'activeWorkout';
+type WorkoutState = 'selection' | 'exerciseList' | 'exerciseDetails' | 'activeWorkout';
+type ExerciseSet = {
+  setNumber: number;
+  weight: string;
+  reps: string;
+  completed: boolean;
+};
 type Exercise = {
   id: number;
   name: string;
@@ -99,6 +106,7 @@ type Exercise = {
   completedSets?: Set<number>;
   currentWeight?: string;
   currentReps?: string;
+  sets?: ExerciseSet[];
 };
 
 export default function Workouts() {
@@ -230,6 +238,74 @@ export default function Workouts() {
     setShowInstructions(true);
   };
 
+  const handleEditExercise = (exercise: Exercise, index: number) => {
+    const exerciseWithSets = {
+      ...exercise,
+      sets: Array.from({ length: exercise.currentSets || exercise.defaultSets }, (_, i) => ({
+        setNumber: i + 1,
+        weight: exercise.lastWeight.replace('kg', '').replace('Bodyweight', '0'),
+        reps: '10',
+        completed: false
+      }))
+    };
+    setSelectedExercise(exerciseWithSets);
+    setCurrentExerciseIndex(index);
+    setWorkoutState('exerciseDetails');
+  };
+
+  const handleSaveExerciseDetails = () => {
+    if (!selectedExercise) return;
+    
+    // Update the exercise in the exercises array
+    setExercises(prev => prev.map(ex => 
+      ex.id === selectedExercise.id ? selectedExercise : ex
+    ));
+    
+    setWorkoutState('exerciseList');
+  };
+
+  const handleUpdateExerciseName = (name: string) => {
+    if (!selectedExercise) return;
+    setSelectedExercise(prev => prev ? { ...prev, name } : null);
+  };
+
+  const handleUpdateExerciseInstructions = (instructions: string) => {
+    if (!selectedExercise) return;
+    setSelectedExercise(prev => prev ? { ...prev, instructions } : null);
+  };
+
+  const handleUpdateSet = (setIndex: number, field: 'weight' | 'reps', value: string) => {
+    if (!selectedExercise) return;
+    const updatedSets = [...(selectedExercise.sets || [])];
+    updatedSets[setIndex] = { ...updatedSets[setIndex], [field]: value };
+    setSelectedExercise(prev => prev ? { ...prev, sets: updatedSets } : null);
+  };
+
+  const handleAddSet = () => {
+    if (!selectedExercise) return;
+    const newSet: ExerciseSet = {
+      setNumber: (selectedExercise.sets?.length || 0) + 1,
+      weight: selectedExercise.lastWeight.replace('kg', '').replace('Bodyweight', '0'),
+      reps: '10',
+      completed: false
+    };
+    setSelectedExercise(prev => prev ? { 
+      ...prev, 
+      sets: [...(prev.sets || []), newSet],
+      currentSets: (prev.sets?.length || 0) + 1
+    } : null);
+  };
+
+  const handleRemoveSet = (setIndex: number) => {
+    if (!selectedExercise || !selectedExercise.sets) return;
+    const updatedSets = selectedExercise.sets.filter((_, index) => index !== setIndex);
+    setSelectedExercise(prev => prev ? { 
+      ...prev, 
+      sets: updatedSets,
+      currentSets: updatedSets.length
+    } : null);
+  };
+
   const handleEndWorkout = () => {
     setWorkoutState('selection');
     setSelectedGroup(null);
@@ -344,20 +420,39 @@ export default function Workouts() {
         {/* Exercise List */}
         <div className="space-y-4">
           {exercises.map((exercise, index) => (
-            <Card key={exercise.id} className="exercise-card">
+            <Card 
+              key={exercise.id} 
+              className="exercise-card cursor-pointer hover:shadow-glow transition-all duration-300"
+              onClick={() => handleEditExercise(exercise, index)}
+            >
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="font-semibold">{exercise.name}</h3>
                     <p className="text-sm text-muted-foreground">Last: {exercise.lastWeight}</p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleShowInstructions(exercise)}
-                  >
-                    <Info className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShowInstructions(exercise);
+                      }}
+                    >
+                      <Info className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditExercise(exercise, index);
+                      }}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Sets Controls */}
@@ -367,7 +462,10 @@ export default function Workouts() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleAdjustSets(exercise, -1)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAdjustSets(exercise, -1);
+                      }}
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
@@ -375,7 +473,10 @@ export default function Workouts() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleAdjustSets(exercise, 1)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAdjustSets(exercise, 1);
+                      }}
                     >
                       <Plus className="h-3 w-3" />
                     </Button>
@@ -383,7 +484,10 @@ export default function Workouts() {
                 </div>
 
                 <Button 
-                  onClick={() => handleStartExercise(exercise, index)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStartExercise(exercise, index);
+                  }}
                   className="w-full btn-primary"
                 >
                   Start Exercise
@@ -398,6 +502,142 @@ export default function Workouts() {
           <Plus className="h-4 w-4 mr-2" />
           Add Custom Exercise
         </Button>
+      </div>
+    );
+  }
+
+  // Exercise Details Screen
+  if (workoutState === 'exerciseDetails' && selectedExercise) {
+    return (
+      <div className="p-4 space-y-6 pb-24">
+        {/* Header */}
+        <div className="flex items-center gap-3 pt-4">
+          <Button variant="ghost" size="sm" onClick={() => setWorkoutState('exerciseList')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold">Edit Exercise</h1>
+            <p className="text-sm text-muted-foreground">Customize your workout details</p>
+          </div>
+          <Button onClick={handleSaveExerciseDetails} className="btn-primary">
+            Save
+          </Button>
+        </div>
+
+        {/* Exercise Name */}
+        <Card className="exercise-card">
+          <CardHeader>
+            <CardTitle className="text-lg">Exercise Name</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Input
+              value={selectedExercise.name}
+              onChange={(e) => handleUpdateExerciseName(e.target.value)}
+              className="text-lg"
+              placeholder="Exercise name"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Instructions */}
+        <Card className="exercise-card">
+          <CardHeader>
+            <CardTitle className="text-lg">Instructions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={selectedExercise.instructions}
+              onChange={(e) => handleUpdateExerciseInstructions(e.target.value)}
+              placeholder="Enter exercise instructions..."
+              className="min-h-[100px]"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Sets Configuration */}
+        <Card className="exercise-card">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              Sets Configuration
+              <Button onClick={handleAddSet} size="sm" variant="outline">
+                <Plus className="h-4 w-4 mr-1" />
+                Add Set
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {selectedExercise.sets?.map((set, index) => (
+              <Card key={index} className="bg-muted/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
+                      {set.setNumber}
+                    </div>
+                    <div className="flex-1 grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Weight (kg)</label>
+                        <Input
+                          type="number"
+                          value={set.weight}
+                          onChange={(e) => handleUpdateSet(index, 'weight', e.target.value)}
+                          className="h-8 text-center"
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Reps</label>
+                        <Input
+                          type="number"
+                          value={set.reps}
+                          onChange={(e) => handleUpdateSet(index, 'reps', e.target.value)}
+                          className="h-8 text-center"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveSet(index)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            
+            {(!selectedExercise.sets || selectedExercise.sets.length === 0) && (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No sets configured</p>
+                <p className="text-sm">Click "Add Set" to create your first set</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 gap-4">
+          <Button 
+            variant="outline"
+            onClick={() => {
+              handleSaveExerciseDetails();
+              handleStartExercise(selectedExercise, currentExerciseIndex);
+            }}
+            className="h-12"
+          >
+            <Play className="h-4 w-4 mr-2" />
+            Save & Start
+          </Button>
+          <Button 
+            onClick={handleSaveExerciseDetails}
+            className="h-12 btn-primary"
+          >
+            <Check className="h-4 w-4 mr-2" />
+            Save Changes
+          </Button>
+        </div>
       </div>
     );
   }
