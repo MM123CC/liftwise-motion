@@ -5,6 +5,26 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { 
   Dumbbell, 
   Timer, 
@@ -20,7 +40,10 @@ import {
   Info,
   Award,
   Edit,
-  Star
+  Star,
+  GripVertical,
+  Save,
+  X
 } from "lucide-react";
 
 // Workout data structures
@@ -126,6 +149,21 @@ export default function Workouts() {
   const [instructionExercise, setInstructionExercise] = useState<Exercise | null>(null);
   const [showPRCelebration, setShowPRCelebration] = useState(false);
   const [workoutStartTime, setWorkoutStartTime] = useState<Date | null>(null);
+  const [showCustomExerciseDialog, setShowCustomExerciseDialog] = useState(false);
+  const [newExercise, setNewExercise] = useState({
+    name: '',
+    instructions: '',
+    defaultSets: 3,
+    lastWeight: '0kg'
+  });
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Rest timer effect
   useEffect(() => {
@@ -319,7 +357,142 @@ export default function Workouts() {
     setWorkoutStartTime(null);
   };
 
+  // Custom exercise functions
+  const handleCreateCustomExercise = () => {
+    if (!newExercise.name.trim()) return;
+    
+    const customExercise: Exercise = {
+      id: Date.now(), // Simple ID generation
+      name: newExercise.name,
+      instructions: newExercise.instructions,
+      defaultSets: newExercise.defaultSets,
+      lastWeight: newExercise.lastWeight,
+      currentSets: newExercise.defaultSets,
+      completedSets: new Set()
+    };
+    
+    setExercises(prev => [...prev, customExercise]);
+    setNewExercise({ name: '', instructions: '', defaultSets: 3, lastWeight: '0kg' });
+    setShowCustomExerciseDialog(false);
+  };
+
+  // Drag and drop function
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setExercises((exercises) => {
+        const oldIndex = exercises.findIndex((exercise) => exercise.id === active.id);
+        const newIndex = exercises.findIndex((exercise) => exercise.id === over.id);
+
+        return arrayMove(exercises, oldIndex, newIndex);
+      });
+    }
+  };
+
   const currentMuscleGroup = muscleGroups.find(g => g.id === selectedGroup);
+
+  // Sortable Exercise Card Component
+  const SortableExerciseCard = ({ exercise, index, onEdit, onStart, onShowInstructions, onAdjustSets }: {
+    exercise: Exercise;
+    index: number;
+    onEdit: (exercise: Exercise, index: number) => void;
+    onStart: (exercise: Exercise, index: number) => void;
+    onShowInstructions: (exercise: Exercise) => void;
+    onAdjustSets: (exercise: Exercise, delta: number) => void;
+  }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+    } = useSortable({ id: exercise.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+    };
+
+    return (
+      <Card 
+        ref={setNodeRef}
+        style={style}
+        className="exercise-card hover:shadow-glow transition-all duration-300"
+      >
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+            >
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold">{exercise.name}</h3>
+              <p className="text-sm text-muted-foreground">Last: {exercise.lastWeight}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onShowInstructions(exercise)}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onEdit(exercise, index)}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Sets Controls */}
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-sm font-medium">Sets:</span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onAdjustSets(exercise, -1)}
+              >
+                <Minus className="h-3 w-3" />
+              </Button>
+              <span className="min-w-[2rem] text-center">{exercise.currentSets || exercise.defaultSets}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onAdjustSets(exercise, 1)}
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => onShowInstructions(exercise)}
+              className="h-10"
+            >
+              View Instructions
+            </Button>
+            <Button 
+              onClick={() => onStart(exercise, index)}
+              className="h-10 btn-primary"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Start
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   // Selection Screen
   if (workoutState === 'selection') {
@@ -417,88 +590,38 @@ export default function Workouts() {
           </div>
         </div>
 
-        {/* Exercise List */}
-        <div className="space-y-4">
-          {exercises.map((exercise, index) => (
-            <Card 
-              key={exercise.id} 
-              className="exercise-card cursor-pointer hover:shadow-glow transition-all duration-300"
-              onClick={() => handleEditExercise(exercise, index)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-semibold">{exercise.name}</h3>
-                    <p className="text-sm text-muted-foreground">Last: {exercise.lastWeight}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleShowInstructions(exercise);
-                      }}
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditExercise(exercise, index);
-                      }}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Sets Controls */}
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-sm font-medium">Sets:</span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAdjustSets(exercise, -1);
-                      }}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="min-w-[2rem] text-center">{exercise.currentSets || exercise.defaultSets}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAdjustSets(exercise, 1);
-                      }}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-
-                <Button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleStartExercise(exercise, index);
-                  }}
-                  className="w-full btn-primary"
-                >
-                  Start Exercise
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {/* Exercise List with Drag and Drop */}
+        <DndContext 
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext 
+            items={exercises.map(ex => ex.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-4">
+              {exercises.map((exercise, index) => (
+                <SortableExerciseCard
+                  key={exercise.id}
+                  exercise={exercise}
+                  index={index}
+                  onEdit={handleEditExercise}
+                  onStart={handleStartExercise}
+                  onShowInstructions={handleShowInstructions}
+                  onAdjustSets={handleAdjustSets}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
 
         {/* Add Custom Exercise */}
-        <Button variant="outline" className="w-full h-12">
+        <Button 
+          variant="outline" 
+          className="w-full h-12"
+          onClick={() => setShowCustomExerciseDialog(true)}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Add Custom Exercise
         </Button>
@@ -807,6 +930,81 @@ export default function Workouts() {
           </Card>
         </div>
       )}
+
+      {/* Custom Exercise Dialog */}
+      <Dialog open={showCustomExerciseDialog} onOpenChange={setShowCustomExerciseDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Custom Exercise</DialogTitle>
+            <DialogDescription>
+              Add your own exercise with personalized instructions
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="exercise-name">Exercise Name</Label>
+              <Input
+                id="exercise-name"
+                value={newExercise.name}
+                onChange={(e) => setNewExercise(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g., Romanian Deadlifts"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="exercise-instructions">Instructions</Label>
+              <Textarea
+                id="exercise-instructions"
+                value={newExercise.instructions}
+                onChange={(e) => setNewExercise(prev => ({ ...prev, instructions: e.target.value }))}
+                placeholder="Describe proper form and technique..."
+                className="min-h-[80px]"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="default-sets">Default Sets</Label>
+                <Input
+                  id="default-sets"
+                  type="number"
+                  value={newExercise.defaultSets}
+                  onChange={(e) => setNewExercise(prev => ({ ...prev, defaultSets: parseInt(e.target.value) || 3 }))}
+                  min="1"
+                  max="10"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="starting-weight">Starting Weight</Label>
+                <Input
+                  id="starting-weight"
+                  value={newExercise.lastWeight}
+                  onChange={(e) => setNewExercise(prev => ({ ...prev, lastWeight: e.target.value }))}
+                  placeholder="e.g., 20kg"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowCustomExerciseDialog(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleCreateCustomExercise}
+                disabled={!newExercise.name.trim()}
+                className="flex-1 btn-primary"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Exercise
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
